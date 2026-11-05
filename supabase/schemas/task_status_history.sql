@@ -28,3 +28,13 @@ alter table public.task_status_history enable row level security;
 revoke all on table public.task_status_history from anon, authenticated;
 grant select on table public.task_status_history to authenticated;
 revoke all on sequence public.task_status_history_id_seq from anon, authenticated;
+
+create policy task_status_history_select on public.task_status_history
+    for select to authenticated
+    using (
+        exists (
+            select 1
+            from public.tasks t
+            where t.id = task_status_history.task_id
+        )
+    );

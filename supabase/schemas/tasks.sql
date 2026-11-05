@@ -28,3 +28,23 @@ grant insert (title, description, object_id, assignee_id),
       update (title, description, object_id, assignee_id)
     on table public.tasks to authenticated;
 
+create policy tasks_select on public.tasks
+    for select to authenticated
+    using (
+        (select public.is_manager())
+        or assignee_id = (select auth.uid())
+    );
+
+create policy tasks_insert on public.tasks
+    for insert to authenticated
+    with check ((select public.is_manager()));
+
+create policy tasks_update on public.tasks
+    for update to authenticated
+    using ((select public.is_manager()))
+    with check ((select public.is_manager()));
+
+create policy tasks_delete on public.tasks
+    for delete to authenticated
+    using ((select public.is_manager()));
+
