@@ -24,3 +24,7 @@ create index task_status_history_task_id_changed_at_idx
     on public.task_status_history(task_id, changed_at);
 
 alter table public.task_status_history enable row level security;
+
+revoke all on table public.task_status_history from anon, authenticated;
+grant select on table public.task_status_history to authenticated;
+revoke all on sequence public.task_status_history_id_seq from anon, authenticated;
