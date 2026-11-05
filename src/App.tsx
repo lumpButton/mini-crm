@@ -4,6 +4,7 @@ import { AppLayout } from "./components/AppLayout";
 import { LoginPage } from "./pages/LoginPage";
 import { ObjectPage } from "./pages/ObjectPage";
 import { ObjectsPage } from "./pages/ObjectsPage";
+import { TaskPage } from "./pages/TaskPage";
 
 export default function App() {
   return (
@@ -13,6 +14,7 @@ export default function App() {
         <Route element={<AppLayout />}>
           <Route index element={<ObjectsPage />} />
           <Route path="objects/:id" element={<ObjectPage />} />
+          <Route path="tasks/:id" element={<TaskPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
