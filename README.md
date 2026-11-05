@@ -1,75 +1,103 @@
-# React + TypeScript + Vite
+# Мини-CRM «Объекты и задачи»
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+CRM для строительной компании. Постановщик ведёт объекты (стройки) и ставит по ним задачи. Исполнитель берёт свои задачи в работу и отправляет на проверку. Постановщик принимает задачу или возвращает её на доработку с комментарием. Каждая смена статуса попадает в историю.
 
-Currently, two official plugins are available:
+## Стек
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Фронтенд:** React 19, TypeScript, Vite, React Router, Mantine (UI-кит).
+- **Бэкенд:** Supabase. Это Postgres, Auth (вход по email и паролю) и автоматический REST API. Своего сервера у проекта нет: браузер обращается к Supabase напрямую.
+- **Безопасность** целиком на стороне базы: права на таблицы (GRANT), Row Level Security и функция смены статуса. Интерфейс только прячет недоступные кнопки.
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+## Структура
 
 ```
+supabase/
+  schemas/          декларативное описание схемы: таблицы, права, политики, функции
+  migrations/       миграции, сгенерированные из schemas/
+  seed.sql          профили тестовых пользователей и демо-данные
+  config.toml       конфигурация проекта Supabase (синхронизирована с облаком)
+src/
+  lib/              клиент Supabase, сгенерированные типы БД, правила переходов, ошибки
+  auth/             сессия, профиль текущего пользователя, защита маршрутов
+  components/       шапка, формы объекта и задачи, бейдж статуса
+  pages/            вход, объекты, карточка объекта, карточка задачи, «Мои задачи»
+```
 
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
+## Модель данных
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+| Таблица | Что хранит |
+|---|---|
+| `profiles` | имя и роль (`manager` / `executor`) пользователя из `auth.users` |
+| `objects` | объекты: название, адрес, кто создал |
+| `tasks` | задачи: название, описание, объект, исполнитель, автор, статус, дата создания |
+| `task_status_history` | история смен статуса: кто, когда, из какого в какой, комментарий |
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+Статусы: `new` → `in_progress` → `in_review` → `accepted`, или `in_review` → `rework` → `in_progress`.
+
+## Как защищены данные
+
+- **Права на таблицы.** У анонимной роли нет никаких прав. Вошедший пользователь может писать только разрешённые колонки: колонку `status`, автора и дату создания напрямую изменить нельзя.
+- **RLS.** Постановщик видит всё. Исполнитель видит только свои задачи, объекты, на которых у него есть задачи, и историю своих задач. Создавать, менять и удалять объекты и задачи может только постановщик.
+- **Смена статуса** идёт только через функцию `change_task_status`. Она проверяет, разрешён ли переход и кто его делает, требует комментарий при возврате на доработку и в той же транзакции пишет историю.
+- **История** создаётся только базой: при создании задачи (триггер) и в функции смены статуса. Через API её нельзя создать, изменить или удалить.
+- **Исполнителем** можно назначить только пользователя с ролью `executor` (триггер).
+- **Открытая регистрация отключена.** Пользователей создаёт администратор в Supabase.
+- **Ключи.** Во фронтенде только публичный ключ (publishable key). Ключ `service_role` в коде и репозитории не используется.
+
+## Локальный запуск
+
+Нужны Node.js 20.19+ (или 22.12+) и проект в Supabase.
+
+```bash
+npm install
+cp .env.example .env.local
+```
+
+Заполните `.env.local` значениями из Supabase Dashboard → Project Settings → API:
 
 ```
+VITE_SUPABASE_URL=https://<project-ref>.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=<publishable key>
+```
+
+```bash
+npm run dev
+```
+
+## Настройка базы
+
+1. Применить миграции:
+   ```bash
+   npx supabase login
+   npx supabase link --project-ref <project-ref>
+   npx supabase db push --remote
+   ```
+2. Отключить регистрацию: Authentication → Sign In / Providers → **Allow new users to sign up** = off.
+3. Создать пользователей: Authentication → Users → **Add user**, с галочкой **Auto Confirm User**. Нужны `manager@example.com`, `executor1@example.com` и `executor2@example.com`.
+4. Выполнить [`supabase/seed.sql`](supabase/seed.sql) в SQL Editor. Скрипт создаст профили с ролями, 3 объекта и задачи во всех статусах с историей. Повторный запуск безопасен: если объекты уже есть, данные не дублируются.
+
+После изменения схемы в `supabase/schemas/`:
+
+```bash
+npx supabase db schema declarative sync --name <имя> --no-apply   # сгенерировать миграцию
+npx supabase db push --remote                                     # применить
+npx supabase gen types --remote --schema public > src/lib/database.types.ts
+```
+
+## Сборка и деплой
+
+```bash
+npm run build
+```
+
+Результат — статические файлы в `dist/`. Переменные `VITE_SUPABASE_*` встраиваются в сборку, поэтому при сборке на сервере или в CI они должны быть заданы.
+
+Приложение одностраничное: сервер должен отдавать `index.html` на любой путь, иначе прямой переход на `/tasks/...` вернёт 404.
+
+- **Свой сервер (Docker + Traefik)** — так развёрнуто демо. В [`deploy/`](deploy) лежат `docker-compose.yml` (контейнер nginx с метками для Traefik и сертификатом Let's Encrypt), `nginx.conf` (отдача `index.html` для всех маршрутов, кэш ассетов) и `security-headers.inc` (CSP, HSTS, запрет встраивания во фрейм). Деплой:
+  ```bash
+  npm run build
+  # скопировать deploy/* и dist/ в /opt/projects/mini-crm на сервере, затем там:
+  docker compose up -d
+  ```
+- **Vercel:** уже настроено в [`vercel.json`](vercel.json).
